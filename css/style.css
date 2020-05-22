@@ -1847,7 +1847,7 @@ a.toc-link {
   position: absolute;
   top: 0;
   left: 0;
-  width: 6rem;
+  width: 10rem;
 }
 .archive-year-wrap .archive-year {
   position: relative;
@@ -1863,7 +1863,7 @@ a.toc-link {
   width: 100%;
 }
 .archives {
-  margin-left: 6rem;
+  margin-left: 10rem;
   border-left: 0.1rem #e6e6e6 dashed;
   padding-left: 3rem;
 }
