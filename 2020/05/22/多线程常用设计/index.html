@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  
+  
+  
+    <meta name="description" content="一整只鸡，最好吃的做法是什么？">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>
+    多线程常用设计 |
+    
+    丁攻</title>
+  
+    <link rel="shortcut icon" href="/favicon.ico">
+  
+  
+<link rel="stylesheet" href="/css/style.css">
+
+  
+    
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.min.css">
+
+  
+  
+<script src="/js/pace.min.js"></script>
+
+<meta name="generator" content="Hexo 4.2.1"></head>
+
+<body>
+<main class="content">
+  <section class="outer">
+  <article id="post-多线程常用设计" class="article article-type-post" itemscope itemprop="blogPost" data-scroll-reveal>
+
+    <div class="article-inner">
+        
+            <header class="article-header">
+                
+  
+    <h1 class="article-title" itemprop="name">
+      多线程常用设计
+    </h1>
+  
+  
+
+
+
+
+            </header>
+            
+
+                
+                    <div class="article-meta">
+                        <a href="/2020/05/22/%E5%A4%9A%E7%BA%BF%E7%A8%8B%E5%B8%B8%E7%94%A8%E8%AE%BE%E8%AE%A1/" class="article-date">
+  <time datetime="2020-05-22T05:49:56.000Z" itemprop="datePublished">2020-05-22</time>
+</a>
+                            
+                    </div>
+                    
+
+                        
+                            
+    <div class="tocbot"></div>
+
+
+
+
+
+                                
+
+                                    <div class="article-entry" itemprop="articleBody">
+                                        
+
+
+                                            
+
+                                                
+                                                                    <h3 id="1-读写分离锁设计模式"><a href="#1-读写分离锁设计模式" class="headerlink" title="1 读写分离锁设计模式"></a>1 读写分离锁设计模式</h3><blockquote>
+<p>场景：多线程对共享资源进行读写操作时同时读是可以的；某线程在进行写操作，则其他线程无法进行读写操作；某些线程在执行读操作，则其他线程无法进行写操作。</p>
+</blockquote>
+<p>==当读操作明显多于写操作时，对读操作不加锁明显能提升性能。==</p>
+<h4 id="读写分离锁的实现"><a href="#读写分离锁的实现" class="headerlink" title="读写分离锁的实现"></a>读写分离锁的实现</h4><blockquote>
+<p>Lock接口以及其子类WriteLock、ReadLock，ReadWriteLock接口用于创建read lock和write lock，并提供查询reader和writer数量的方法；</p>
+</blockquote>
+<a id="more"></a>
+<h4 id="ReadLock实现："><a href="#ReadLock实现：" class="headerlink" title="ReadLock实现："></a>ReadLock实现：</h4><blockquote>
+<p>lock方法：获取排他锁，检查当前writer数量是否大于0，大于0表示有线程在进行写操作，则wait；小于等于0表示没有其他线程在写，则成功获取锁，并将reader数量加1;</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">lock</span><span class="params">()</span> <span class="keyword">throws</span> InterruptedException </span>&#123;</span><br><span class="line">    <span class="keyword">synchronized</span>(readWriteLock.getMutex()) &#123;</span><br><span class="line">        <span class="keyword">while</span>(readWriteLock.getWritingWriters() &gt; <span class="number">0</span> || (readWriteLock.getPreferWrite() &amp;&amp; readWriteLock.getWaitingWriters() &gt; <span class="number">0</span>)) &#123;</span><br><span class="line">            readWriteLock.getMutex().wait();</span><br><span class="line">        &#125;</span><br><span class="line">        readWriteLock.incrementReadingReaders();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>unlock方法：获取排它锁，然后将reader数量减1，并notifyAll其他等待的线程。</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">unlock</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">synchronized</span>(readWriteLock.getMutex()) &#123;</span><br><span class="line">        readWriteLock.decrementReadingReaders();</span><br><span class="line">        readWriteLock.changePrefer(<span class="keyword">true</span>);</span><br><span class="line">        readWriteLock.getMutex().notifyAll();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="WriteLock实现："><a href="#WriteLock实现：" class="headerlink" title="WriteLock实现："></a>WriteLock实现：</h4><blockquote>
+<p>lock方法：获取排它锁，将等待的writer数量加1，然后检查reader和writer的数量，大于0则wait，都小于等于0表示可进行写操作，将等待的writer数量减1，然后对writer数量加1；</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">lock</span><span class="params">()</span> <span class="keyword">throws</span> InterruptedException </span>&#123;</span><br><span class="line">    <span class="keyword">synchronized</span>(readWriteLock.getMutex()) &#123;</span><br><span class="line">        <span class="keyword">try</span> &#123;</span><br><span class="line">            readWriteLock.incrementWaitingWriters();</span><br><span class="line">            <span class="keyword">while</span>(readWriteLock.getReadingReaders() &gt; <span class="number">0</span> || readWriteLock.getWritingWriters() &gt; <span class="number">0</span>) &#123;</span><br><span class="line">                readWriteLock.getMutex().wait();</span><br><span class="line">            &#125; <span class="keyword">finally</span> &#123;</span><br><span class="line">                readWriteLock.decrementWaitingWriters();</span><br><span class="line">            &#125;</span><br><span class="line">            readWriteLock.incrementWritingWriters();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>unlock方法：获取排它锁，将writer数量减1，并notifyAll其他等待的线程。</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">unlock</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">synchronized</span>(readWriteLock.getMutex()) &#123;</span><br><span class="line">        readWriteLock.decrementWritingWriters();</span><br><span class="line">        readWriteLock.changePrefer(<span class="keyword">false</span>);</span><br><span class="line">        readWriteLock.getMutex().notifyAll();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="排它锁的使用是为了保护reader和writer计数器。"><a href="#排它锁的使用是为了保护reader和writer计数器。" class="headerlink" title="排它锁的使用是为了保护reader和writer计数器。"></a>排它锁的使用是为了保护reader和writer计数器。</h4><blockquote>
+<p>技巧：可设置一个写偏好变量，当读操作获取到锁时，将写偏好变量设置为true，表示读操作完成后写操作优先去获取锁（在读锁的lock方法中检查偏好变量是否为true）；当写操作完成时释放锁，并将写操作偏好设置为false，让读操作有更多机会获取锁。</p>
+</blockquote>
+<h3 id="2-Future设计"><a href="#2-Future设计" class="headerlink" title="2 Future设计"></a>2 Future设计</h3><blockquote>
+<p>核心思路：将任务提交后，返回一个Future对象。当任务执行线程在任务完成后将返回值写回到Future中，并设置完成标识，并notifyAll所有wait结果的调用方。如果任务还没有完成，调用方通过future.get获取返回值时，future内部会检查是否任务已经完成，如果没有完成，则进入wait，等待完成后的notify，已完成则返回结果。</p>
+</blockquote>
+<h4 id="核心代码"><a href="#核心代码" class="headerlink" title="核心代码"></a>核心代码</h4><blockquote>
+<p>任务提交：</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> Future&lt;?&gt; submit(Task&lt;IN, OUT&gt; task, IN input) &#123;</span><br><span class="line">    <span class="keyword">final</span> FutureTask&lt;OUT&gt; future = <span class="keyword">new</span> FutureTask&lt;&gt;();</span><br><span class="line">    <span class="keyword">new</span> Thread(() -&gt; &#123;</span><br><span class="line">        OUT result = task.get(input);</span><br><span class="line">        future.finish(result);</span><br><span class="line">    &#125;).start();</span><br><span class="line">    <span class="keyword">return</span> future;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>Future的设置返回值finish方法实现：</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">protected</span> <span class="keyword">void</span> <span class="title">finish</span><span class="params">(T result)</span> </span>&#123;</span><br><span class="line">    <span class="keyword">synchronized</span>(LOCK) &#123;</span><br><span class="line">        <span class="keyword">if</span>(isDone) <span class="keyword">return</span>;</span><br><span class="line">        <span class="keyword">this</span>.result = result;</span><br><span class="line">        <span class="keyword">this</span>.isDone = <span class="keyword">true</span>;</span><br><span class="line">        LOCK.notifyAll();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>Future获取返回值的get方法实现：</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> T <span class="title">get</span><span class="params">()</span> <span class="keyword">throws</span> InterruptedException </span>&#123;</span><br><span class="line">    <span class="keyword">synchronized</span>(LOCK) &#123;</span><br><span class="line">        <span class="keyword">while</span>(!isDone) &#123;</span><br><span class="line">            LOCK.wait();</span><br><span class="line">        &#125;</span><br><span class="line">        <span class="keyword">return</span> result;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<h4 id="补充"><a href="#补充" class="headerlink" title="补充"></a>补充</h4><ul>
+<li>get方法可以加一个超时功能，wait到一定时间没有返回则抛出异常。</li>
+</ul>
+<h3 id="3-上下文设计模式"><a href="#3-上下文设计模式" class="headerlink" title="3 上下文设计模式"></a>3 上下文设计模式</h3><blockquote>
+<p>使用ThreadLocal可以实现线程间数据隔离。</p>
+</blockquote>
+<blockquote>
+<p>早期版本ThreadLocal内存泄漏问题：因为早起ThreadLocal内部是与当前线程实例相关联的（用HashMap），所以当线程结束后，Thread实例和存储的数据依然存在，随着系统运行时间的增长可能会越来越多，最终导致内存泄漏。</p>
+</blockquote>
+<blockquote>
+<p>ThreadLocal内部结构：threadLocal.get时，通过当前线程实例thread获取到thread.threadLocalMap，threadLocalMap的key就是threadLocal实例，threadLocalMap.getEntry(threadLocal)就得到了封装的值entry，Entry是WeakReferencede的子类，Entry中的key就是threadLocal实例，并作为弱引用存在。</p>
+</blockquote>
+<blockquote>
+<p>当threadLocal设置为null之后，GC会回收entry中的key，但是thread.threadLocalMap中依然有指向entry的引用，所以value不能被回收。如果thread被回收，那么后续的threadLocalMap以及entry中的value也就被回收了。</p>
+</blockquote>
+<blockquote>
+<p>内存泄漏和内存溢出：泄漏是指应用程序中已经不再持有某个对象的引用，但是GC无法回收，因为其到引用跟root的链路是可达的，所以无法回收。溢出是指内存不足，可见内存泄漏是导致内存溢出的原因之一。</p>
+</blockquote>
+<blockquote>
+<p>ThreadLocal如何避免内存泄漏：</p>
+</blockquote>
+<ol>
+<li>使用WeakReference，JVM中触发任意GC都会导致WeakReference被回收；</li>
+<li>get或set数据时检查并清除已被GC回收的数据。</li>
+</ol>
+<h3 id="4-Latch设计模式"><a href="#4-Latch设计模式" class="headerlink" title="4 Latch设计模式"></a>4 Latch设计模式</h3><blockquote>
+<p>一句话介绍：只有所有条件都满足时，门阀才打开。</p>
+</blockquote>
+<blockquote>
+<p>实现：属性limit记录需要满足的条件个数，当limit降为0时打开门阀。</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">await</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">synchronized</span>(<span class="keyword">this</span>) &#123;</span><br><span class="line">        <span class="keyword">while</span>(limit &gt; <span class="number">0</span>) &#123;</span><br><span class="line">            <span class="keyword">this</span>.wait();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">countDown</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">synchronized</span>(<span class="keyword">this</span>) &#123;</span><br><span class="line">        <span class="keyword">if</span>(limit &lt;= <span class="number">0</span>) &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> IllegalStateException(<span class="string">""</span>);</span><br><span class="line">        &#125;</span><br><span class="line">        limit--;</span><br><span class="line">        <span class="keyword">this</span>.notifyAll();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>线程任务调用await方法等待limit降为0，当其他线程执行完之后调用countDown方法对limit减1，然后通知其他等待线程。</p>
+<blockquote>
+<p>带超时功能的实现：</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">await</span><span class="params">(TimeUnit unit, <span class="keyword">long</span> time)</span> <span class="keyword">throws</span> TimeoutException </span>&#123;</span><br><span class="line">    <span class="keyword">if</span>(time &lt;= <span class="number">0</span>) <span class="keyword">throw</span> <span class="keyword">new</span> IllegalArgumentException(<span class="string">"参数不合法"</span>)</span><br><span class="line">    <span class="keyword">long</span> remainingNanos = unit.toNanos(time);</span><br><span class="line">    <span class="keyword">final</span> <span class="keyword">long</span> endNanos = System.nanoTime() + remainingNanos;</span><br><span class="line">    <span class="keyword">synchronized</span>(<span class="keyword">this</span>) &#123;</span><br><span class="line">        <span class="keyword">while</span>(limit &gt; <span class="number">0</span>) &#123;</span><br><span class="line">            <span class="keyword">if</span>(TimeUnit.NANOSECONDS.toMillis(remainingNanos) &lt;= <span class="number">0</span>) <span class="keyword">throw</span> <span class="keyword">new</span> TimeoutException(<span class="string">"time out"</span>);</span><br><span class="line">            <span class="keyword">this</span>.wait(TimeUnit.NANOSECONDS.toMillis(remainingNanos));</span><br><span class="line">            remainingNanos = endNanos - System.nanoTime();</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>记录超时时间点，每次检查limit时都重新计算剩余时间，如果剩余时间小于等于0，则超时。</p>
+<h3 id="4-几种引用类型介绍"><a href="#4-几种引用类型介绍" class="headerlink" title="4 几种引用类型介绍"></a>4 几种引用类型介绍</h3><blockquote>
+<p>SoftReference: 当内存不足时，GC会回收Soft Reference；</p>
+</blockquote>
+<blockquote>
+<p>WeakReference: 无论是young GC还是full GC，都会被回收；</p>
+</blockquote>
+<blockquote>
+<p>PhantomReference: 必须和ReferenceQueue配合使用，它的get方法始终返回null，当Phantom Reference被回收后，会将其插入到ReferenceQueue中，我们可以通过检查queue直到进行了一次GC。</p>
+</blockquote>
+<h3 id="5-Active-Object模式"><a href="#5-Active-Object模式" class="headerlink" title="5 Active Object模式"></a>5 Active Object模式</h3><blockquote>
+<p>简介: 接收异步消息的主动对象，主动对象就是指其拥有自己的独立线程，它可以接收异步消息并返回处理的结果。</p>
+</blockquote>
+<h4 id="通用Active-Object的设计"><a href="#通用Active-Object的设计" class="headerlink" title="通用Active Object的设计"></a>通用Active Object的设计</h4><blockquote>
+<p>核心思路：服务类中以@ActiveMethod标注需要Active的方法，创建服务类的代理对象，当调用方法时，代理方法中检查是否标注了@ActiveMethod注解，如果没有则直接反射调用并返回结果，如果有，则将方法、参数以及服务对象封装成message放入队列中，并返回Future，异步线程负责消费队列中的message，调用方可通过Future的get方法拿到最终的返回值。</p>
+</blockquote>
+<h4 id="核心代码："><a href="#核心代码：" class="headerlink" title="核心代码："></a>核心代码：</h4><blockquote>
+<p>ActiveMessage的execute方法：</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">execute</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">try</span> &#123;</span><br><span class="line">        Object result = method.invoke(instance, args);</span><br><span class="line">        <span class="keyword">if</span>(future != <span class="keyword">null</span>) &#123;</span><br><span class="line">            Object realResult = ((Future&lt;?&gt;)result).get();</span><br><span class="line">            future.finish(realResult);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125; <span class="keyword">catch</span>(Exception e) &#123;</span><br><span class="line">        <span class="keyword">if</span>(future != <span class="keyword">null</span>) &#123;</span><br><span class="line">            future.finish(<span class="keyword">null</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>我们将代理的对象、方法以及参数封装成ActiveMessage，执行线程取到message时调用execute方法执行，结果通过future.finish设置到future中，外部可通过get方法拿到返回值。</p>
+<blockquote>
+<p>ActiveServiceFactory生成代理对象：</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="keyword">static</span> &lt;T&gt; <span class="function">T <span class="title">active</span><span class="params">(T instance)</span> </span>&#123;</span><br><span class="line">    Object proxy = Proxy.newInstance(instance.getClass().getClassLoader(), instance.getClass().getInterfaces(), <span class="keyword">new</span> ActiveInvocationHandler&lt;&gt;(instance));</span><br><span class="line">    <span class="keyword">return</span> (T) proxy;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>使用ActiveInvocationHandler代理instance实例，使用JDK动态代理技术，所以代理类必须有继承的接口。</p>
+<blockquote>
+<p>ActiveInvocationHandler的invoke方法：</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">invoke</span><span class="params">(Object proxy, Method method, Object[] args)</span> <span class="keyword">throws</span> Throwable </span>&#123;</span><br><span class="line">    <span class="keyword">if</span>(method.isAnnotationPresent(ActiveMethod<span class="class">.<span class="keyword">class</span>)) </span>&#123;</span><br><span class="line">        <span class="keyword">this</span>.checkMethod(method);</span><br><span class="line">        ActiveMessage.Builder builder = <span class="keyword">new</span> ActiveMessage.Builder();</span><br><span class="line">        builder.useMethod(method).withArgs(args).forService(instance);</span><br><span class="line">        Object result = <span class="keyword">null</span>;</span><br><span class="line">        <span class="keyword">if</span>(<span class="keyword">this</span>.isReturnFutureType(method)) &#123;</span><br><span class="line">            result = <span class="keyword">new</span> ActiveFuture&lt;&gt;();</span><br><span class="line">            builder.returnFuture((ActiveFuture)result);</span><br><span class="line">        &#125;</span><br><span class="line">        queue.offer(builder.build());</span><br><span class="line">        <span class="keyword">return</span> result;</span><br><span class="line">    &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">        <span class="keyword">return</span> method.invoke(instance, args);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>如果方法注解了@ActiveMethod，如果方法有返回值则必须返回Future，将method、instance、args以及future封装成ActiveMessage放到queue中，然后将future返回。如果没有标注@ActiveMethod，则直接返回调用值。</p>
+<blockquote>
+<p>守护线程进行消息消费</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">run</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">for</span>(;;) &#123;</span><br><span class="line">        ActiveMessage activeMessage = <span class="keyword">this</span>.queue.take();</span><br><span class="line">        activeMessage.execute();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<p>从队列中取出message进行执行。</p>
+<h3 id="6-Event-Bus设计模式"><a href="#6-Event-Bus设计模式" class="headerlink" title="6 Event Bus设计模式"></a>6 Event Bus设计模式</h3><blockquote>
+<p>消息中间件主要用于解决进程之间消息异步处理的解决方案。</p>
+</blockquote>
+<h4 id="核心接口设计"><a href="#核心接口设计" class="headerlink" title="核心接口设计"></a>核心接口设计</h4><blockquote>
+<p>Bus接口，对外提供post方法用来发送event到topic上，register方法用来注册订阅者subscriber；</p>
+</blockquote>
+<blockquote>
+<p>Registry注册表，用于记录对应的订阅者subscriber，以及受理消息的回调方法，回调方法我们用注解@Subscriber标识；</p>
+</blockquote>
+<blockquote>
+<p>Dispatcher分发器，用来将event广播给注册表中监听了topic的订阅者。</p>
+</blockquote>
+<h4 id="设计思路"><a href="#设计思路" class="headerlink" title="设计思路"></a>设计思路</h4><p>将订阅者注册到Registry中，注册信息中有订阅者关注的topic以及对应的处理方法。Dispatcher通过topic从注册表Registry中查找对应topic的订阅者，然后调用订阅者的处理方法。Bus对外提供注册、订阅等方法，用户只需要通过Bus操作即可。</p>
+<h3 id="7-Event-Driven架构"><a href="#7-Event-Driven架构" class="headerlink" title="7 Event-Driven架构"></a>7 Event-Driven架构</h3><blockquote>
+<p>EDA，事件驱动架构是一种实现组件之间松耦合、易扩展的架构方式。</p>
+</blockquote>
+<h4 id="主要包括："><a href="#主要包括：" class="headerlink" title="主要包括："></a>主要包括：</h4><blockquote>
+<p>Events: 事件处理的数据；</p>
+</blockquote>
+<blockquote>
+<p>Event Handlers: 处理Events的方法；</p>
+</blockquote>
+<blockquote>
+<p>Event Loop: 维护Events和Event Handlers之间的交互流程，通过对应的类型找到对应的Handler。</p>
+</blockquote>
+<h4 id="同步Event-Driven设计"><a href="#同步Event-Driven设计" class="headerlink" title="同步Event-Driven设计"></a>同步Event-Driven设计</h4><blockquote>
+<p>Message接口，作为Event更高一层的抽象，提供getType方法，返回Event type；</p>
+</blockquote>
+<blockquote>
+<p>Channel接口，提供dispatch(Message message)方法，用于处理一种类型的消息；</p>
+</blockquote>
+<blockquote>
+<p>DynamicRouter接口，用于注册消息类型和Channel，以及dispatch方法来分发Message到对应的Channel，它的实现类要提供类型和Channel映射，具体实现如下：</p>
+</blockquote>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">public</span> <span class="class"><span class="keyword">class</span> <span class="title">EventDispatcher</span> <span class="keyword">implements</span> <span class="title">DynamicRouter</span>&lt;<span class="title">Message</span>&gt; </span>&#123;</span><br><span class="line"><span class="keyword">private</span> <span class="keyword">final</span> Map&lt;Class&lt;? extends Message&gt;, Channel&gt; routerTable;</span><br><span class="line"></span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="title">EventDispatcher</span><span class="params">()</span> </span>&#123;</span><br><span class="line">        routerTable = <span class="keyword">new</span> HashMap&lt;&gt;();</span><br><span class="line">    &#125;</span><br><span class="line">    </span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">dispatch</span><span class="params">(Message message)</span> </span>&#123;</span><br><span class="line">        <span class="keyword">if</span>(routerTable.containsKey(message.getType())) &#123;</span><br><span class="line">            routerTable.get(message.getType()).dispatch(message);</span><br><span class="line">        &#125; <span class="keyword">else</span> &#123;</span><br><span class="line">            <span class="keyword">throw</span> <span class="keyword">new</span> MessageMatcherException(<span class="string">"Can't match the channel for ["</span> + message.getType() + <span class="string">"] type"</span>);</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;</span><br><span class="line">    </span><br><span class="line">    <span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">registerChannel</span><span class="params">(Class&lt;? extends Message&gt; messageType, Channel&lt;? extends Message&gt; channel)</span> </span>&#123;</span><br><span class="line">        <span class="keyword">this</span>.routerTable.put(messageType, channel);</span><br><span class="line">    &#125;</span><br><span class="line">    </span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<blockquote>
+<p>测试：定义一个InputEvent、ResultEvent作为Event的实现，分别定义对应的Channel，并将Channel注册到dispatcher中，然后使用dispatcher.dispatch分发不同的Event，可以看到由对应的Channel处理。</p>
+</blockquote>
+<h4 id="异步Event-Driven设计"><a href="#异步Event-Driven设计" class="headerlink" title="异步Event-Driven设计"></a>异步Event-Driven设计</h4><blockquote>
+<p>定义一个异步版的Channel - AsyncChannel，与同步版的区别在于执行的时候使用线程执行；</p>
+</blockquote>
+<blockquote>
+<p>定义一个异步版的Dispatcher - AsyncEventDispatcher，其中map改用线程安全的ConcurrentHashMap。</p>
+</blockquote>
+
+                                                                        
+                                    </div>
+                                    <footer class="article-footer">
+                                        <a data-url="https://dinggong.github.io/2020/05/22/%E5%A4%9A%E7%BA%BF%E7%A8%8B%E5%B8%B8%E7%94%A8%E8%AE%BE%E8%AE%A1/" data-id="ckahsn4gv0000ko4oc687h8oh" class="article-share-link">
+                                            分享
+                                        </a>
+                                        
+  <ul class="article-tag-list" itemprop="keywords"><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E5%A4%9A%E7%BA%BF%E7%A8%8B/" rel="tag">多线程</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E8%AE%BE%E8%AE%A1%E6%A8%A1%E5%BC%8F/" rel="tag">设计模式</a></li><li class="article-tag-list-item"><a class="article-tag-list-link" href="/tags/%E9%94%81/" rel="tag">锁</a></li></ul>
+
+                                    </footer>
+
+    </div>
+
+    
+        
+  <nav class="article-nav">
+    
+    
+      <a href="/2020/04/02/MyBatis%E5%85%A5%E9%97%A8/" class="article-nav-link">
+        <strong class="article-nav-caption">后一篇</strong>
+        <div class="article-nav-title">MyBatis入门</div>
+      </a>
+    
+  </nav>
+
+
+            
+
+                
+                    
+                        
+                            
+
+</article>
+</section>
+  <footer class="footer">
+  <div class="outer">
+    <div class="float-right">
+      <ul class="list-inline">
+  
+    <li><i class="fe fe-smile-alt"></i> <span id="busuanzi_value_site_uv"></span></li>
+  
+    <li><i class="fe fe-bookmark"></i> <span id="busuanzi_value_page_pv"></span></li>
+  
+</ul>
+    </div>
+    <ul class="list-inline">
+      <li>&copy; 2020 丁攻</li>
+      <li>Powered by <a href="http://hexo.io/" target="_blank">Hexo</a></li>
+      <li>Theme  <a href="https://github.com/zhwangart/hexo-theme-ocean" target="_blank" rel="noopener">Ocean</a></li>
+    </ul>
+  </div>
+</footer>
+
+</main>
+<aside class="sidebar">
+  <button class="navbar-toggle"></button>
+<nav class="navbar">
+  
+    <div class="logo">
+      <a href="/"><img src="/images/head.jpg" alt="丁攻"></a>
+    </div>
+  
+  <ul class="nav nav-main">
+    
+      <li class="nav-item">
+        <a class="nav-item-link" href="/">首页</a>
+      </li>
+    
+      <li class="nav-item">
+        <a class="nav-item-link" href="/archives">归档</a>
+      </li>
+    
+      <li class="nav-item">
+        <a class="nav-item-link" href="/gallery">相册</a>
+      </li>
+    
+      <li class="nav-item">
+        <a class="nav-item-link" href="/about">关于</a>
+      </li>
+    
+    <li class="nav-item">
+      <a class="nav-item-link nav-item-search" title="搜索">
+        <i class="fe fe-search"></i>
+        搜索
+      </a>
+    </li>
+  </ul>
+</nav>
+<nav class="navbar navbar-bottom">
+  <ul class="nav">
+    <li class="nav-item">
+      <div class="totop" id="totop">
+  <i class="fe fe-rocket"></i>
+</div>
+    </li>
+    <li class="nav-item">
+      
+        <a class="nav-item-link" target="_blank" href="/atom.xml" title="RSS Feed">
+          <i class="fe fe-feed"></i>
+        </a>
+      
+    </li>
+  </ul>
+</nav>
+<div class="search-form-wrap">
+  <div class="local-search local-search-plugin">
+  <input type="search" id="local-search-input" class="local-search-input" placeholder="Search...">
+  <div id="local-search-result" class="local-search-result"></div>
+</div>
+</div>
+</aside>
+
+<script src="/js/jquery-2.0.3.min.js"></script>
+
+
+<script src="/js/jquery.justifiedGallery.min.js"></script>
+
+
+<script src="/js/lazyload.min.js"></script>
+
+
+<script src="/js/busuanzi-2.3.pure.min.js"></script>
+
+
+  
+<script src="/fancybox/jquery.fancybox.min.js"></script>
+
+
+
+
+  
+<script src="/js/tocbot.min.js"></script>
+
+  <script>
+    // Tocbot_v4.7.0  http://tscanlin.github.io/tocbot/
+    tocbot.init({
+      tocSelector: '.tocbot',
+      contentSelector: '.article-entry',
+      headingSelector: 'h1, h2, h3, h4, h5, h6',
+      hasInnerContainers: true,
+      scrollSmooth: true,
+      positionFixedSelector: '.tocbot',
+      positionFixedClass: 'is-position-fixed',
+      fixedSidebarOffset: 'auto',
+    });
+  </script>
+
+
+
+<script src="/js/ocean.js"></script>
+
+
+</body>
+</html>
