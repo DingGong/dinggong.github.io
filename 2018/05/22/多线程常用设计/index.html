@@ -94,8 +94,6 @@
 </blockquote>
 <script src="//gist.github.com/185a727cbfad60db2079a820ccf92fc9.js"></script>
 
-<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="keyword">public</span> <span class="keyword">void</span> <span class="title">unlock</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    <span class="keyword">synchronized</span>(readWriteLock.getMutex()) &#123;</span><br><span class="line">        readWriteLock.decrementReadingReaders();</span><br><span class="line">        readWriteLock.changePrefer(<span class="keyword">true</span>);</span><br><span class="line">        readWriteLock.getMutex().notifyAll();</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
-
 <h4 id="WriteLock实现："><a href="#WriteLock实现：" class="headerlink" title="WriteLock实现："></a>WriteLock实现：</h4><blockquote>
 <p>lock方法：获取排它锁，将等待的writer数量加1，然后检查reader和writer的数量，大于0则wait，都小于等于0表示可进行写操作，将等待的writer数量减1，然后对writer数量加1；</p>
 </blockquote>
@@ -249,7 +247,7 @@
                                                                         
                                     </div>
                                     <footer class="article-footer">
-                                        <a data-url="https://dinggong.github.io/2018/05/22/%E5%A4%9A%E7%BA%BF%E7%A8%8B%E5%B8%B8%E7%94%A8%E8%AE%BE%E8%AE%A1/" data-id="ckbmxtgq20002zgjg365hf9eo" class="article-share-link">
+                                        <a data-url="https://dinggong.github.io/2018/05/22/%E5%A4%9A%E7%BA%BF%E7%A8%8B%E5%B8%B8%E7%94%A8%E8%AE%BE%E8%AE%A1/" data-id="ckbmxvbzg00021njg44a96uaf" class="article-share-link">
                                             分享
                                         </a>
                                         
